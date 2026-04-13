@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - VixProxy</title>
+  <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="glass-card">
+      <h2 style="font-size: 2rem; margin-bottom: 0.5rem; background: linear-gradient(to right, #fff, #38bdf8); -webkit-background-clip: text; color: transparent;">Welcome Back</h2>
+      <p style="color: var(--text-muted); margin-bottom: 2rem;">Sign in to access your proxy keys.</p>
+      
+      <div id="errorBox" class="error-msg"></div>
+
+      <form id="loginForm">
+        <div class="input-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" required>
+        </div>
+        <div class="input-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" required>
+        </div>
+        <div class="input-group" id="totpGroup" style="display: none;">
+          <label for="totp">2FA Code</label>
+          <input type="text" id="totp" pattern="[0-9]{6}" autocomplete="one-time-code">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+          <span id="btnText">Sign In</span>
+          <div class="spinner" id="spinner"></div>
+        </button>
+      </form>
+      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.9rem; color: var(--text-muted);">
+        Don't have an account? <a href="/register">Register here</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const errorBox = document.getElementById('errorBox');
+    const totpGroup = document.getElementById('totpGroup');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+      btnText.style.display = 'none';
+      spinner.style.display = 'block';
+
+      try {
+        const payload = {
+          username: form.username.value,
+          password: form.password.value
+        };
+        if (form.totp.value) payload.totp = form.totp.value;
+
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.requires2fa) {
+          totpGroup.style.display = 'block';
+          form.totp.required = true;
+          errorBox.textContent = 'Please enter your 2FA code';
+          errorBox.style.display = 'block';
+        } else if (data.error) {
+          errorBox.textContent = data.error;
+          errorBox.style.display = 'block';
+        } else if (data.success) {
+          window.location.href = data.role === 'user' ? '/dashboard' : '/admin';
+        }
+      } catch (err) {
+        errorBox.textContent = 'Network error occurred';
+        errorBox.style.display = 'block';
+      } finally {
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - VixProxy</title>
+  <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="glass-card">
+      <h2 style="font-size: 2rem; margin-bottom: 0.5rem; background: linear-gradient(to right, #fff, #8b5cf6); -webkit-background-clip: text; color: transparent;">Create Account</h2>
+      <p style="color: var(--text-muted); margin-bottom: 2rem;">Join VixProxy to start generating keys.</p>
+      
+      <div id="errorBox" class="error-msg"></div>
+
+      <form id="registerForm">
+        <div class="input-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" required minlength="3" maxlength="32">
+        </div>
+        <div class="input-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" required minlength="8">
+        </div>
+        <div class="input-group">
+          <label for="invite_code">Invite Code (Optional)</label>
+          <input type="text" id="invite_code" placeholder="Leave blank if not required">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+          <span id="btnText">Register</span>
+          <div class="spinner" id="spinner"></div>
+        </button>
+      </form>
+      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.9rem; color: var(--text-muted);">
+        Already have an account? <a href="/login">Login here</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const errorBox = document.getElementById('errorBox');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+      btnText.style.display = 'none';
+      spinner.style.display = 'block';
+
+      try {
+        const payload = {
+          username: form.username.value,
+          password: form.password.value,
+          invite_code: form.invite_code.value || undefined
+        };
+
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          errorBox.textContent = data.error;
+          errorBox.style.display = 'block';
+        } else if (data.success) {
+          window.location.href = data.role === 'user' ? '/dashboard' : '/admin';
+        }
+      } catch (err) {
+        errorBox.textContent = 'Network error occurred';
+        errorBox.style.display = 'block';
+      } finally {
+        btnText.style.display = 'inline';
+        spinner.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

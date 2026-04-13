@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - VixProxy</title>
+  <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="brand">VixProxy Admin</div>
+      <nav class="nav-links">
+        <a href="/dashboard">User App</a>
+        <a href="#" id="logoutBtn" style="color: var(--danger-color);">Logout</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="glass-card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.5rem;">Master Provider Keys</h2>
+          <button class="btn btn-primary" onclick="document.getElementById('createMasterModal').style.display = 'block'">+ Add Master Key</button>
+        </div>
+        <div style="overflow-x: auto;">
+          <table id="masterKeysTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Provider</th>
+                <th>Usage</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="glass-card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.5rem;">User Management</h2>
+        </div>
+        <div style="overflow-x: auto;">
+          <table id="usersTable">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Daily Limit</th>
+                <th>Used Today</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="glass-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.5rem;">Generate Invite Code</h2>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+          <div class="input-group" style="margin-bottom: 0; min-width: 200px;">
+            <select id="inviteRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="generateInvite()">Generate Code</button>
+        </div>
+        <div id="inviteResult" style="margin-top: 1rem; color: var(--success-color); font-weight: bold;"></div>
+      </div>
+    </main>
+
+    <!-- Create Master Key Modal -->
+    <div id="createMasterModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 50; padding: 2rem;">
+      <div class="glass-card" style="max-width: 500px; margin: 4rem auto; position: relative;">
+        <button onclick="document.getElementById('createMasterModal').style.display = 'none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; border: none; color: white; cursor: pointer; font-size: 1.5rem;">&times;</button>
+        <h2 style="margin-bottom: 1.5rem;">Add Master Key</h2>
+        <form id="createMasterForm">
+          <div class="input-group">
+            <label>Name Identifier</label>
+            <input type="text" id="mkName" required placeholder="e.g. Primary OpenAI">
+          </div>
+          <div class="input-group">
+            <label>Provider</label>
+            <select id="mkProvider" required>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="google">Google Gemini</option>
+              <option value="groq">Groq</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>API Key</label>
+            <input type="password" id="mkKey" required placeholder="sk-...">
+          </div>
+          <div class="input-group">
+            <label>Daily Token Quota</label>
+            <input type="number" id="mkQuota" value="500000" min="1000" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Add Key</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function init() {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) window.location.href = '/login';
+        const user = await meRes.json();
+        if (user.role !== 'admin' && user.role !== 'superadmin') window.location.href = '/dashboard';
+        
+        await loadData();
+      } catch (err) {}
+    }
+
+    async function loadData() {
+      // Load Master Keys
+      const mkRes = await fetch('/api/admin/master-keys');
+      const keys = await mkRes.json();
+      document.querySelector('#masterKeysTable tbody').innerHTML = keys.map(k => `
+        <tr>
+          <td><strong>${k.name}</strong></td>
+          <td><span style="text-transform: capitalize;">${k.provider}</span></td>
+          <td>${k.daily_used} / ${k.daily_quota}</td>
+          <td><span class="badge ${k.is_active ? 'active' : 'revoked'}">${k.is_active ? 'Active' : 'Disabled'}</span></td>
+          <td>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="toggleMaster('${k.id}')">Toggle</button>
+          </td>
+        </tr>
+      `).join('');
+
+      // Load Users
+      const userRes = await fetch('/api/admin/users');
+      const users = await userRes.json();
+      document.querySelector('#usersTable tbody').innerHTML = users.map(u => `
+        <tr>
+          <td><strong>${u.username}</strong></td>
+          <td><span class="badge" style="background: rgba(255,255,255,0.1);">${u.role}</span></td>
+          <td>${u.daily_request_limit}</td>
+          <td>${u.requests_used_today}</td>
+          <td>${u.is_banned ? `<span class="badge revoked">Banned</span>` : `<span class="badge active">Active</span>`}</td>
+          <td>
+            ${u.role !== 'superadmin' ? `
+              <button class="btn ${u.is_banned ? 'btn-success' : 'btn-danger'}" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="${u.is_banned ? `unbanUser('${u.id}')` : `banUser('${u.id}')`}">${u.is_banned ? 'Unban' : 'Ban'}</button>
+            ` : '-'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('createMasterForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('mkName').value,
+        provider: document.getElementById('mkProvider').value,
+        key: document.getElementById('mkKey').value,
+        daily_quota: parseInt(document.getElementById('mkQuota').value)
+      };
+      const res = await fetch('/api/admin/master-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        document.getElementById('createMasterModal').style.display = 'none';
+        document.getElementById('createMasterForm').reset();
+        loadData();
+      } else {
+        alert('Failed to add master key (requires superadmin)');
+      }
+    });
+
+    async function toggleMaster(id) {
+      await fetch(`/api/admin/master-keys/${id}/toggle`, { method: 'PUT' });
+      loadData();
+    }
+
+    async function banUser(id) {
+      const reason = prompt('Ban reason?');
+      if (reason !== null) {
+        await fetch(`/api/admin/users/${id}/ban`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reason}) });
+        loadData();
+      }
+    }
+    
+    async function unbanUser(id) {
+      await fetch(`/api/admin/users/${id}/unban`, { method: 'POST' });
+      loadData();
+    }
+
+    async function generateInvite() {
+      const type = document.getElementById('inviteRole').value;
+      const res = await fetch('/api/admin/invite-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, expires_in_days: 7 })
+      });
+      const data = await res.json();
+      if (data.code) {
+        document.getElementById('inviteResult').innerHTML = `Invite Code Created: <span style="font-family: monospace; user-select: all; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px; border: 1px solid var(--primary-color);">${data.code}</span>`;
+      } else {
+        alert('Failed to generate invite (requires superadmin)');
+      }
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+
+    init();
+  </script>
+</body>
+</html>

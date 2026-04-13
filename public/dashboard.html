@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - VixProxy</title>
+  <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="brand">VixProxy</div>
+      <nav class="nav-links">
+        <span id="welcomeText" style="color: var(--text-muted); margin-right: 1.5rem;"></span>
+        <a href="#" id="logoutBtn" style="color: var(--danger-color);">Logout</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="grid" style="margin-bottom: 2rem;">
+        <div class="glass-card stat-card">
+          <div class="label">Requests Today</div>
+          <div class="value" id="requestsCount">- / -</div>
+        </div>
+        <div class="glass-card stat-card">
+          <div class="label">Total Tokens Proxy'd</div>
+          <div class="value" id="tokensCount">-</div>
+        </div>
+      </div>
+
+      <div class="glass-card" style="margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.5rem;">Your Proxy Keys</h2>
+          <button class="btn btn-primary" onclick="document.getElementById('createKeyModal').style.display = 'block'">+ Create Key</button>
+        </div>
+        <div style="overflow-x: auto;">
+          <table id="keysTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Prefix</th>
+                <th>Provider</th>
+                <th>Limit</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- Create Key Modal (Simple implementation) -->
+    <div id="createKeyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 50; padding: 2rem;">
+      <div class="glass-card" style="max-width: 500px; margin: 4rem auto; position: relative;">
+        <button onclick="document.getElementById('createKeyModal').style.display = 'none'" style="position: absolute; right: 1rem; top: 1rem; background: transparent; border: none; color: white; cursor: pointer; font-size: 1.5rem;">&times;</button>
+        <h2 style="margin-bottom: 1.5rem;">Create Proxy Key</h2>
+        <form id="createKeyForm">
+          <div class="input-group">
+            <label>Key Name</label>
+            <input type="text" id="keyName" required placeholder="e.g. SillyTavern Claude">
+          </div>
+          <div class="input-group">
+            <label>Provider Model Series</label>
+            <select id="masterKeySelect" required></select>
+          </div>
+          <div class="input-group">
+            <label>Daily Request Limit</label>
+            <input type="number" id="dailyLimit" value="100" min="1" max="10000" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Generate</button>
+        </form>
+      </div>
+    </div>
+    
+    <!-- Key Reveal Modal -->
+    <div id="revealKeyModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 60; padding: 2rem;">
+      <div class="glass-card" style="max-width: 500px; margin: 4rem auto;">
+        <h2 style="margin-bottom: 1rem; color: var(--success-color);">Key Generated!</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Copy this key now. You will not be able to see it again.</p>
+        <div style="background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 8px; border: 1px solid var(--surface-border); margin-bottom: 1.5rem; word-break: break-all; font-family: monospace; font-size: 1.1rem;" id="newKeyValue"></div>
+        <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('revealKeyModal').style.display = 'none'; loadData();">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function init() {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) window.location.href = '/login';
+        const user = await meRes.json();
+        document.getElementById('welcomeText').innerText = `Welcome, ${user.username}`;
+        
+        await loadData();
+      } catch (err) {}
+    }
+
+    async function loadData() {
+      const statsRes = await fetch('/api/user/stats');
+      const stats = await statsRes.json();
+      document.getElementById('requestsCount').innerText = `${stats.user.requests_used_today} / ${stats.user.daily_request_limit}`;
+      document.getElementById('tokensCount').innerText = stats.totals.tokens.toLocaleString();
+
+      const keysRes = await fetch('/api/user/proxy-keys');
+      const keys = await keysRes.json();
+      const tbody = document.querySelector('#keysTable tbody');
+      tbody.innerHTML = keys.map(k => `
+        <tr>
+          <td><strong>${k.name}</strong></td>
+          <td style="font-family: monospace; color: var(--secondary-color);">${k.key_prefix}...</td>
+          <td>${k.provider}</td>
+          <td>${k.daily_used} / ${k.daily_limit}</td>
+          <td><span class="badge ${k.status === 'active' ? 'active' : 'revoked'}">${k.status}</span></td>
+          <td>
+            ${k.status === 'active' ? `<button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="revokeKey('${k.id}')">Revoke</button>` : '-'}
+          </td>
+        </tr>
+      `).join('');
+
+      const provRes = await fetch('/api/user/available-providers');
+      const provs = await provRes.json();
+      document.getElementById('masterKeySelect').innerHTML = provs.map(p => `<option value="${p.id}">${p.name} (${p.provider})</option>`).join('');
+    }
+
+    document.getElementById('createKeyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/user/proxy-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('keyName').value,
+          master_key_id: document.getElementById('masterKeySelect').value,
+          daily_limit: parseInt(document.getElementById('dailyLimit').value)
+        })
+      });
+      const data = await res.json();
+      if (data.key_value) {
+        document.getElementById('createKeyModal').style.display = 'none';
+        document.getElementById('newKeyValue').innerText = data.key_value;
+        document.getElementById('revealKeyModal').style.display = 'block';
+        document.getElementById('createKeyForm').reset();
+      } else {
+        alert(data.error || 'Failed to create key');
+      }
+    });
+
+    async function revokeKey(id) {
+      if (confirm('Are you sure you want to revoke this key?')) {
+        await fetch(`/api/user/proxy-keys/${id}`, { method: 'DELETE' });
+        loadData();
+      }
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+
+    init();
+  </script>
+</body>
+</html>
