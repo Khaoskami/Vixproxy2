@@ -1,152 +1,488 @@
 import { Router } from 'express';
-import { requireAdmin, requireSuperadmin } from '../middleware/auth.js';
-import db from '../models/database.js';
-import { generateId, generateInviteCode, encrypt } from '../utils/crypto.js';
-import { audit } from '../utils/audit.js';
+import crypto from 'crypto';
+import { body, param, validationResult } from 'express-validator';
+import { requireAuth, requireAdmin, requireSuperadmin } from '../middleware/security.js';
+import { supabase } from '../models/supabase.js';
 import logger from '../utils/logger.js';
 
 const router = Router();
-router.use(requireAdmin); // Most admin routes just need admin, specific ones will nest requireSuperadmin
+router.use(requireAuth);
+router.use(requireAdmin);
 
-// ==========================================
-// USERS
-// ==========================================
-router.get('/users', (req, res) => {
-  const users = db.prepare('SELECT id, username, role, email, totp_enabled, failed_logins, locked_until, daily_request_limit, requests_used_today, last_reset_at, is_banned, ban_reason, created_at FROM users ORDER BY created_at DESC').all();
-  res.json(users);
+function valErr(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ error: 'Validation failed', details: errors.array().map((e) => e.msg) });
+    return true;
+  }
+  return false;
+}
+
+async function audit(actorId, action, opts = {}) {
+  const { error } = await supabase.from('vk_audit_log').insert({
+    actor_id: actorId,
+    action,
+    target_type: opts.targetType || null,
+    target_id: opts.targetId || null,
+    details: opts.details || null,
+    ip_address: opts.ip || null,
+  });
+  if (error) logger.warn(`audit log error: ${error.message}`);
+}
+
+// ═══════════════════════════════════════════════
+//  USER MANAGEMENT
+// ═══════════════════════════════════════════════
+
+// GET /api/admin/users — list all users
+router.get('/users', async (_req, res) => {
+  const { data: users, error } = await supabase
+    .from('vk_users')
+    .select('id, username, role, tier, is_active, totp_enabled, last_login, created_at')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: 'Failed to fetch users' });
+  res.json({ users });
 });
 
-router.post('/users/:id/ban', requireSuperadmin, (req, res) => {
-  const { reason } = req.body;
-  if (req.user.id === req.params.id) return res.status(400).json({ error: 'Cannot ban yourself' });
-  db.prepare('UPDATE users SET is_banned = 1, ban_reason = ? WHERE id = ?').run(reason || 'Violated terms', req.params.id);
-  audit(req.user.id, req.user.username, 'ban_user', 'user', req.params.id, { reason }, req.ip);
-  res.json({ success: true });
+// PATCH /api/admin/users/:id/active — toggle active
+router.patch(
+  '/users/:id/active',
+  [param('id').isUUID(), body('active').isBoolean()],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+
+    // Don't let an admin disable themselves
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot disable your own account' });
+    }
+
+    // Don't let non-superadmins touch superadmins
+    const { data: target } = await supabase
+      .from('vk_users')
+      .select('role')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role === 'superadmin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Cannot modify a superadmin' });
+    }
+
+    const { error } = await supabase
+      .from('vk_users')
+      .update({ is_active: req.body.active, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to update user' });
+
+    await audit(req.user.id, req.body.active ? 'user_activated' : 'user_deactivated', {
+      targetType: 'user',
+      targetId: req.params.id,
+      ip: req.ip,
+    });
+    res.json({ message: `User ${req.body.active ? 'activated' : 'deactivated'}` });
+  },
+);
+
+// PATCH /api/admin/users/:id/role — change role (superadmin only for promoting to superadmin)
+router.patch(
+  '/users/:id/role',
+  [param('id').isUUID(), body('role').isIn(['user', 'admin', 'superadmin'])],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const newRole = req.body.role;
+
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot change your own role' });
+    }
+    if (newRole === 'superadmin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Only superadmins can promote to superadmin' });
+    }
+
+    const { data: target } = await supabase
+      .from('vk_users')
+      .select('role')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role === 'superadmin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Cannot modify a superadmin' });
+    }
+
+    const { error } = await supabase
+      .from('vk_users')
+      .update({ role: newRole, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to update role' });
+
+    await audit(req.user.id, 'user_role_changed', {
+      targetType: 'user',
+      targetId: req.params.id,
+      details: { newRole, oldRole: target.role },
+      ip: req.ip,
+    });
+    res.json({ message: `Role changed to ${newRole}` });
+  },
+);
+
+// PATCH /api/admin/users/:id/tier — change tier
+router.patch(
+  '/users/:id/tier',
+  [param('id').isUUID(), body('tier').isIn(['free', 'basic', 'pro', 'unlimited'])],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const { error } = await supabase
+      .from('vk_users')
+      .update({ tier: req.body.tier, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to update tier' });
+
+    await audit(req.user.id, 'user_tier_changed', {
+      targetType: 'user',
+      targetId: req.params.id,
+      details: { tier: req.body.tier },
+      ip: req.ip,
+    });
+    res.json({ message: `Tier set to ${req.body.tier}` });
+  },
+);
+
+// ═══════════════════════════════════════════════
+//  CREDITS
+// ═══════════════════════════════════════════════
+
+// GET /api/admin/users/:id/credits
+router.get('/users/:id/credits', [param('id').isUUID()], async (req, res) => {
+  if (valErr(req, res)) return;
+  const { data, error } = await supabase
+    .from('vk_credits')
+    .select('balance_microdollars, lifetime_purchased, lifetime_used, updated_at')
+    .eq('user_id', req.params.id)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: 'Failed to fetch credits' });
+  res.json({ credits: data || { balance_microdollars: 0, lifetime_purchased: 0, lifetime_used: 0 } });
 });
 
-router.post('/users/:id/unban', requireSuperadmin, (req, res) => {
-  db.prepare('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?').run(req.params.id);
-  audit(req.user.id, req.user.username, 'unban_user', 'user', req.params.id, {}, req.ip);
-  res.json({ success: true });
+// POST /api/admin/users/:id/credits — add to balance
+router.post(
+  '/users/:id/credits',
+  requireSuperadmin,
+  [param('id').isUUID(), body('amount').isInt({ min: 1 })],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const amount = req.body.amount;
+
+    // Upsert: if no row exists, create one with this balance
+    const { data: existing } = await supabase
+      .from('vk_credits')
+      .select('balance_microdollars, lifetime_purchased')
+      .eq('user_id', req.params.id)
+      .maybeSingle();
+
+    const newBalance = (existing?.balance_microdollars || 0) + amount;
+    const newLifetime = (existing?.lifetime_purchased || 0) + amount;
+
+    const { error } = await supabase
+      .from('vk_credits')
+      .upsert(
+        {
+          user_id: req.params.id,
+          balance_microdollars: newBalance,
+          lifetime_purchased: newLifetime,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+    if (error) return res.status(500).json({ error: 'Failed to add credits' });
+
+    await audit(req.user.id, 'credits_added', {
+      targetType: 'user',
+      targetId: req.params.id,
+      details: { amount },
+      ip: req.ip,
+    });
+    res.json({ message: `Added ${amount} microdollars` });
+  },
+);
+
+// PUT /api/admin/users/:id/credits — set exact balance
+router.put(
+  '/users/:id/credits',
+  requireSuperadmin,
+  [param('id').isUUID(), body('balance').isInt({ min: 0 })],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const balance = req.body.balance;
+
+    const { error } = await supabase
+      .from('vk_credits')
+      .upsert(
+        {
+          user_id: req.params.id,
+          balance_microdollars: balance,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+    if (error) return res.status(500).json({ error: 'Failed to set credits' });
+
+    await audit(req.user.id, 'credits_set', {
+      targetType: 'user',
+      targetId: req.params.id,
+      details: { balance },
+      ip: req.ip,
+    });
+    res.json({ message: `Balance set to ${balance} microdollars` });
+  },
+);
+
+// ═══════════════════════════════════════════════
+//  TIER CONFIG
+// ═══════════════════════════════════════════════
+
+// GET /api/admin/tiers
+router.get('/tiers', async (_req, res) => {
+  const { data: tiers, error } = await supabase
+    .from('vk_tier_config')
+    .select('*')
+    .order('tier');
+  if (error) return res.status(500).json({ error: 'Failed to fetch tiers' });
+
+  // Normalize allowed_models — Supabase returns JSONB as array already, but be defensive
+  const normalized = (tiers || []).map((t) => ({
+    ...t,
+    allowed_models: Array.isArray(t.allowed_models)
+      ? t.allowed_models
+      : JSON.parse(t.allowed_models || '["*"]'),
+  }));
+  res.json({ tiers: normalized });
 });
 
-router.post('/users/:id/limits', requireSuperadmin, (req, res) => {
-  const { limit } = req.body;
-  if (typeof limit !== 'number' || limit < 0) return res.status(400).json({ error: 'Invalid limit' });
-  db.prepare('UPDATE users SET daily_request_limit = ? WHERE id = ?').run(limit, req.params.id);
-  audit(req.user.id, req.user.username, 'update_user_limits', 'user', req.params.id, { limit }, req.ip);
-  res.json({ success: true });
+// PUT /api/admin/tiers/:tier — update tier config
+router.put(
+  '/tiers/:tier',
+  requireSuperadmin,
+  [
+    param('tier').isIn(['free', 'basic', 'pro', 'unlimited']),
+    body('rateLimitRpm').isInt({ min: 1 }),
+    body('rateLimitRpd').isInt({ min: 1 }),
+    body('maxMessagesPerDay').isInt({ min: 0 }),
+    body('maxContextTokens').isInt({ min: 1 }),
+    body('allowedModels').isArray(),
+    body('priceMultiplier').isFloat({ min: 0.1, max: 10 }),
+  ],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const { error } = await supabase
+      .from('vk_tier_config')
+      .update({
+        rate_limit_rpm: req.body.rateLimitRpm,
+        rate_limit_rpd: req.body.rateLimitRpd,
+        max_messages_per_day: req.body.maxMessagesPerDay,
+        max_context_tokens: req.body.maxContextTokens,
+        allowed_models: req.body.allowedModels,
+        price_multiplier: req.body.priceMultiplier,
+      })
+      .eq('tier', req.params.tier);
+    if (error) return res.status(500).json({ error: 'Failed to update tier' });
+
+    await audit(req.user.id, 'tier_updated', {
+      targetType: 'tier',
+      targetId: req.params.tier,
+      details: req.body,
+      ip: req.ip,
+    });
+    res.json({ message: `Tier ${req.params.tier} updated` });
+  },
+);
+
+// ═══════════════════════════════════════════════
+//  DAILY COUNTERS
+// ═══════════════════════════════════════════════
+
+// GET /api/admin/daily-counters — list active counters (today only)
+router.get('/daily-counters', async (_req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: counters, error } = await supabase
+    .from('vk_daily_counters')
+    .select('*')
+    .eq('reset_date', today)
+    .order('cost_microdollars', { ascending: false })
+    .limit(200);
+  if (error) return res.status(500).json({ error: 'Failed to fetch counters' });
+  res.json({ counters });
 });
 
-// ==========================================
-// MASTER KEYS
-// ==========================================
-router.get('/master-keys', (req, res) => {
-  const keys = db.prepare(`
-    SELECT mk.id, mk.name, mk.provider, mk.models, mk.base_url, mk.is_active, mk.daily_quota, mk.daily_used, mk.last_reset_at, mk.created_at, u.username as created_by 
-    FROM master_keys mk 
-    LEFT JOIN users u ON mk.created_by = u.id 
-    ORDER BY mk.created_at DESC
-  `).all();
-  res.json(keys.map(k => ({ ...k, models: JSON.parse(k.models || '[]') })));
+// POST /api/admin/daily-counters/reset — force prune stale counters
+router.post('/daily-counters/reset', requireSuperadmin, async (req, res) => {
+  const { data, error } = await supabase.rpc('vk_reset_stale_counters');
+  if (error) return res.status(500).json({ error: 'Failed to reset counters' });
+  await audit(req.user.id, 'counters_reset', { details: { rowsDeleted: data }, ip: req.ip });
+  res.json({ message: `Reset ${data || 0} stale counter(s)` });
 });
 
-router.post('/master-keys', requireSuperadmin, (req, res) => {
-  const { name, provider, key, models, base_url, daily_quota } = req.body;
-  if (!name || !provider || !key) return res.status(400).json({ error: 'Name, provider, and key required' });
-  
-  const id = generateId();
-  const encrypted = encrypt(key);
-  const modelsStr = JSON.stringify(models || []);
-  
-  db.prepare(`
-    INSERT INTO master_keys (id, name, provider, encrypted_key, key_iv, key_tag, models, base_url, daily_quota, created_by, created_at, updated_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())
-  `).run(id, name, provider, encrypted.data, encrypted.iv, encrypted.tag, modelsStr, base_url || null, daily_quota || 50000, req.user.id);
-  
-  audit(req.user.id, req.user.username, 'create_master_key', 'master_key', id, { name, provider }, req.ip);
-  res.json({ success: true, id });
+// ═══════════════════════════════════════════════
+//  CONTENT SAFETY
+// ═══════════════════════════════════════════════
+
+// GET /api/admin/safety/stats
+router.get('/safety/stats', async (_req, res) => {
+  const [pendingRes, totalRes, confirmedRes, dismissedRes] = await Promise.all([
+    supabase.from('vk_content_flags').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('vk_content_flags').select('id', { count: 'exact', head: true }),
+    supabase.from('vk_content_flags').select('id', { count: 'exact', head: true }).eq('status', 'confirmed'),
+    supabase.from('vk_content_flags').select('id', { count: 'exact', head: true }).eq('status', 'dismissed'),
+  ]);
+
+  res.json({
+    stats: {
+      pending: pendingRes.count || 0,
+      total: totalRes.count || 0,
+      confirmed: confirmedRes.count || 0,
+      dismissed: dismissedRes.count || 0,
+    },
+  });
 });
 
-router.put('/master-keys/:id/toggle', requireSuperadmin, (req, res) => {
-  const key = db.prepare('SELECT is_active FROM master_keys WHERE id = ?').get(req.params.id);
-  if (!key) return res.status(404).json({ error: 'Key not found' });
-  const newState = key.is_active ? 0 : 1;
-  db.prepare('UPDATE master_keys SET is_active = ? WHERE id = ?').run(newState, req.params.id);
-  audit(req.user.id, req.user.username, 'toggle_master_key', 'master_key', req.params.id, { active: newState }, req.ip);
-  res.json({ success: true, is_active: newState });
-});
-
-router.delete('/master-keys/:id', requireSuperadmin, (req, res) => {
-  db.prepare('DELETE FROM master_keys WHERE id = ?').run(req.params.id);
-  audit(req.user.id, req.user.username, 'delete_master_key', 'master_key', req.params.id, {}, req.ip);
-  res.json({ success: true });
-});
-
-// ==========================================
-// PROXY KEYS (VIEW ALL)
-// ==========================================
-router.get('/proxy-keys', (req, res) => {
-  const keys = db.prepare(`
-    SELECT pk.id, pk.name, pk.status, pk.daily_limit, pk.daily_used, pk.created_at, u.username, mk.provider, mk.name as master_key_name 
-    FROM proxy_keys pk 
-    JOIN users u ON pk.user_id = u.id 
-    JOIN master_keys mk ON pk.master_key_id = mk.id 
-    ORDER BY pk.created_at DESC LIMIT 100
-  `).all();
-  res.json(keys);
-});
-
-// ==========================================
-// INVITE CODES
-// ==========================================
-router.get('/invite-codes', requireSuperadmin, (req, res) => {
-  const codes = db.prepare(`
-    SELECT ic.id, ic.code, ic.type, ic.status, ic.expires_at, ic.created_at, ic.used_at, c.username as creator_name, u.username as used_by_name 
-    FROM invite_codes ic 
-    LEFT JOIN users c ON ic.created_by = c.id 
-    LEFT JOIN users u ON ic.used_by = u.id 
-    ORDER BY ic.created_at DESC
-  `).all();
-  res.json(codes);
-});
-
-router.post('/invite-codes', requireSuperadmin, (req, res) => {
-  const { type, expires_in_days } = req.body;
-  const roleType = ['admin', 'user'].includes(type) ? type : 'user';
-  const id = generateId();
-  const code = generateInviteCode();
-  const expiresAt = expires_in_days ? Math.floor(Date.now()/1000) + (expires_in_days * 86400) : null;
-  
-  db.prepare(`
-    INSERT INTO invite_codes (id, code, type, created_by, expires_at, created_at) 
-    VALUES (?, ?, ?, ?, ?, unixepoch())
-  `).run(id, code, roleType, req.user.id, expiresAt);
-  
-  audit(req.user.id, req.user.username, 'create_invite', 'invite_code', id, { type: roleType }, req.ip);
-  res.json({ success: true, id, code });
-});
-
-// ==========================================
-// LOGS
-// ==========================================
-router.get('/request-logs', (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
+// GET /api/admin/safety/flags
+router.get('/safety/flags', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
-  const logs = db.prepare(`
-    SELECT rl.*, u.username 
-    FROM request_logs rl 
-    LEFT JOIN users u ON rl.user_id = u.id 
-    ORDER BY rl.created_at DESC LIMIT ? OFFSET ?
-  `).all(limit, offset);
-  res.json(logs);
+  let query = supabase
+    .from('vk_content_flags')
+    .select('*, vk_users!vk_content_flags_user_id_fkey(username)')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (req.query.status) query = query.eq('status', req.query.status);
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: 'Failed to fetch flags' });
+
+  const flags = (data || []).map((f) => ({
+    ...f,
+    username: f.vk_users?.username || 'unknown',
+    matched_patterns: Array.isArray(f.matched_patterns)
+      ? f.matched_patterns
+      : JSON.parse(f.matched_patterns || '[]'),
+  }));
+  res.json({ flags });
 });
 
-router.get('/audit-logs', (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
+// PATCH /api/admin/safety/flags/:id — review (confirm/dismiss)
+router.patch(
+  '/safety/flags/:id',
+  [
+    param('id').isUUID(),
+    body('status').isIn(['reviewed', 'dismissed', 'confirmed']),
+    body('notes').optional().isString().isLength({ max: 1000 }),
+  ],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const { error } = await supabase
+      .from('vk_content_flags')
+      .update({
+        status: req.body.status,
+        reviewed_by: req.user.id,
+        reviewed_at: new Date().toISOString(),
+        notes: req.body.notes || null,
+      })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Failed to update flag' });
+
+    await audit(req.user.id, 'content_flag_reviewed', {
+      targetType: 'content_flag',
+      targetId: req.params.id,
+      details: { status: req.body.status },
+      ip: req.ip,
+    });
+    res.json({ message: `Flag marked as ${req.body.status}` });
+  },
+);
+
+// ═══════════════════════════════════════════════
+//  INVITE CODES
+// ═══════════════════════════════════════════════
+
+// POST /api/admin/invite-codes — generate
+router.post(
+  '/invite-codes',
+  requireSuperadmin,
+  [body('role').isIn(['admin', 'superadmin']), body('expiresInHours').optional().isInt({ min: 1, max: 720 })],
+  async (req, res) => {
+    if (valErr(req, res)) return;
+    const code = 'inv_' + crypto.randomBytes(16).toString('hex');
+    const expiresAt = req.body.expiresInHours
+      ? new Date(Date.now() + req.body.expiresInHours * 3600 * 1000).toISOString()
+      : null;
+
+    const { error } = await supabase.from('vk_invite_codes').insert({
+      code,
+      role: req.body.role,
+      created_by: req.user.id,
+      expires_at: expiresAt,
+    });
+    if (error) return res.status(500).json({ error: 'Failed to generate code' });
+
+    await audit(req.user.id, 'invite_code_created', {
+      targetType: 'invite_code',
+      details: { role: req.body.role, expiresAt },
+      ip: req.ip,
+    });
+    res.status(201).json({ code, role: req.body.role, expiresAt });
+  },
+);
+
+// GET /api/admin/invite-codes
+router.get('/invite-codes', requireSuperadmin, async (_req, res) => {
+  const { data, error } = await supabase
+    .from('vk_invite_codes')
+    .select('*, used_by_user:vk_users!vk_invite_codes_used_by_fkey(username)')
+    .order('code');
+  if (error) return res.status(500).json({ error: 'Failed to fetch codes' });
+
+  const codes = (data || []).map((c) => ({
+    ...c,
+    used_by_name: c.used_by_user?.username || null,
+  }));
+  res.json({ codes });
+});
+
+// DELETE /api/admin/invite-codes/:code
+router.delete('/invite-codes/:code', requireSuperadmin, async (req, res) => {
+  const { error } = await supabase
+    .from('vk_invite_codes')
+    .delete()
+    .eq('code', req.params.code)
+    .eq('is_used', false);
+  if (error) return res.status(500).json({ error: 'Failed to revoke code' });
+  await audit(req.user.id, 'invite_code_revoked', {
+    targetType: 'invite_code',
+    targetId: req.params.code,
+    ip: req.ip,
+  });
+  res.json({ message: 'Code revoked' });
+});
+
+// ═══════════════════════════════════════════════
+//  AUDIT LOG
+// ═══════════════════════════════════════════════
+
+router.get('/audit-log', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
   const offset = parseInt(req.query.offset) || 0;
-  const logs = db.prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(limit, offset);
-  res.json(logs);
+  const { data, error } = await supabase
+    .from('vk_audit_log')
+    .select('*, vk_users!vk_audit_log_actor_id_fkey(username)')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) return res.status(500).json({ error: 'Failed to fetch audit log' });
+
+  const logs = (data || []).map((l) => ({
+    ...l,
+    actor_name: l.vk_users?.username || 'unknown',
+  }));
+  res.json({ logs });
 });
 
 export default router;

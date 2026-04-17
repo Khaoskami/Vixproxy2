@@ -1,30 +1,27 @@
 {
-  "name": "vixproxy",
+  "name": "vixknight",
   "version": "2.0.0",
-  "description": "Hardened LLM key proxy — AES-256-GCM encrypted keys, RBAC, CSAM detection, audit logging",
+  "description": "AI RP Key Proxy — VixKnight frontend + new-api relay backend, Supabase storage",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "NODE_ENV=production node src/server.js",
-    "seed": "node src/utils/seed-admin.js"
+    "db:migrate": "node src/utils/migrate.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.6.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "bcrypt": "^5.1.1",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.1",
-    "express-session": "^1.18.1",
     "express-validator": "^7.2.0",
     "helmet": "^8.0.0",
     "hpp": "^0.2.3",
-    "node-fetch": "^3.3.2",
-    "otplib": "^12.0.1",
-    "qrcode": "^1.5.4",
-    "session-file-store": "^1.5.0",
-    "uuid": "^10.0.0",
+    "jsonwebtoken": "^9.0.2",
     "winston": "^3.15.0"
   }
 }

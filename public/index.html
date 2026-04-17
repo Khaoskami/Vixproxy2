@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VixKnight</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Fira+Code:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{--bg-deep:#06060c;--bg:#0b0b14;--surface:#111120;--surface2:#171728;--surface3:#1e1e32;--border:#2a2a44;--border-hover:#3a3a5c;--text:#e2e2f0;--text-dim:#7a7a98;--text-muted:#55556e;--accent:#c9a54e;--accent-glow:rgba(201,165,78,.15);--accent-dim:#9a7a3a;--red:#e05555;--red-bg:rgba(224,85,85,.1);--green:#4eca7a;--green-bg:rgba(78,202,122,.1);--blue:#5588dd;--blue-bg:rgba(85,136,221,.1);--orange:#dd8844;--radius:10px;--radius-sm:6px;--fd:'Cinzel',serif;--fb:'DM Sans',sans-serif;--fm:'Fira Code',monospace;--shadow:0 2px 12px rgba(0,0,0,.4);--tr:.2s ease}
+*{margin:0;padding:0;box-sizing:border-box}html{font-size:15px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}body{background:var(--bg-deep);color:var(--text);font-family:var(--fb);line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.app{display:flex;min-height:100vh}.sidebar{width:240px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:100}.main{flex:1;margin-left:240px;min-height:100vh}.content{max-width:900px;margin:0 auto;padding:32px 28px}
+.logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}.logo h1{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--accent);letter-spacing:2px}.logo .tagline{font-size:10px;color:var(--text-muted);font-family:var(--fm);margin-top:4px;letter-spacing:.5px}
+.nav{flex:1;padding:12px 0;overflow-y:auto}.nav-section{font-size:9px;font-family:var(--fm);color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;padding:16px 20px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--text-dim);font-size:13px;font-weight:500;transition:all var(--tr);border-left:3px solid transparent;min-height:40px}.nav-item:hover{background:var(--surface);color:var(--text)}.nav-item.active{background:var(--accent-glow);color:var(--accent);border-left-color:var(--accent)}.nav-item .icon{font-size:16px;width:20px;text-align:center}.nav-item.admin-only{display:none}.nav-item.admin-only.visible{display:flex}.nav-section.admin-only{display:none}.nav-section.admin-only.visible{display:block}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);font-size:12px}.sidebar-footer .username{color:var(--accent);font-weight:600;font-family:var(--fm)}.role-badge{display:inline-block;font-size:9px;padding:2px 6px;border-radius:3px;margin-left:6px;text-transform:uppercase;letter-spacing:.5px;font-family:var(--fm);font-weight:600}.role-badge.superadmin{background:var(--accent-glow);color:var(--accent);border:1px solid var(--accent-dim)}.role-badge.admin{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(85,136,221,.3)}.role-badge.user{background:var(--surface2);color:var(--text-dim);border:1px solid var(--border)}.logout-btn{margin-top:8px;background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;font-family:var(--fm)}.logout-btn:hover{color:var(--red)}
+.auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;background:radial-gradient(ellipse at 50% 30%,rgba(201,165,78,.04) 0%,transparent 60%),var(--bg-deep)}.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:40px 36px;width:100%;max-width:400px;box-shadow:var(--shadow)}.auth-card .logo-big{font-family:var(--fd);font-size:28px;font-weight:900;color:var(--accent);text-align:center;letter-spacing:3px;margin-bottom:4px}.auth-card .subtitle{text-align:center;font-size:12px;color:var(--text-muted);font-family:var(--fm);margin-bottom:28px}
+.auth-tabs{display:flex;margin-bottom:24px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}.auth-tab{flex:1;padding:8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text-dim);border:none;transition:all var(--tr);min-height:36px}.auth-tab.active{background:var(--accent);color:var(--bg-deep)}
+.form-group{margin-bottom:16px}.form-label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;font-family:var(--fm)}.form-input,.form-select{width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--fb);font-size:13px;transition:border-color var(--tr);outline:none}.form-input:focus,.form-select:focus{border-color:var(--accent)}.form-input::placeholder{color:var(--text-muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--fb);font-size:13px;font-weight:600;cursor:pointer;transition:all var(--tr);background:var(--surface2);color:var(--text)}.btn:hover{background:var(--surface3);border-color:var(--border-hover)}.btn-primary{background:var(--accent);color:var(--bg-deep);border-color:var(--accent)}.btn-primary:hover{background:var(--accent-dim)}.btn-danger{background:var(--red-bg);color:var(--red);border-color:rgba(224,85,85,.3)}.btn-danger:hover{background:rgba(224,85,85,.2)}.btn-sm{padding:6px 12px;font-size:11px;min-height:32px}.btn-block{width:100%}
+.page-title{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--accent);letter-spacing:1px;margin-bottom:6px}.page-subtitle{font-size:13px;color:var(--text-dim);margin-bottom:28px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;transition:border-color var(--tr)}.card:hover{border-color:var(--border-hover)}.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.card-title{font-size:14px;font-weight:600}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center}.stat-value{font-size:24px;font-weight:700;font-family:var(--fm)}.stat-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;padding:8px 12px;font-size:10px;font-family:var(--fm);color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}td{padding:10px 12px;border-bottom:1px solid rgba(42,42,68,.5)}tr:hover td{background:var(--surface2)}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:3px;font-family:var(--fm);font-weight:500}.badge-active{background:var(--green-bg);color:var(--green)}.badge-inactive{background:var(--red-bg);color:var(--red)}.badge-provider{background:var(--surface3);color:var(--text-dim);border:1px solid var(--border)}
+.toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow);opacity:0;transform:translateY(-10px);transition:all .3s;max-width:400px}.toast.show{opacity:1;transform:translateY(0)}.toast-success{background:var(--green);color:var(--bg-deep)}.toast-error{background:var(--red);color:#fff}
+.alert{padding:14px 16px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:16px}.alert-info{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(85,136,221,.3)}.alert-warn{background:var(--accent-glow);color:var(--accent);border:1px solid var(--accent-dim)}
+.empty{text-align:center;padding:40px;color:var(--text-muted)}.empty .icon{font-size:32px;margin-bottom:12px}
+.mobile-header{display:none;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:97}.hamburger{background:none;border:none;color:var(--accent);font-size:22px;cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99}
+@media(max-width:768px){.sidebar{transform:translateX(-100%);transition:transform .3s}.sidebar.open{transform:translateX(0)}.sidebar-overlay.open{display:block}.mobile-header{display:flex;align-items:center;justify-content:space-between}.main{margin-left:0}.content{padding:20px 12px}.stat-grid{grid-template-columns:repeat(2,1fr)}.stat-card{padding:12px}.stat-value{font-size:20px}.stat-label{font-size:9px}.page-title{font-size:18px}.page-subtitle{font-size:12px;margin-bottom:20px}.card{padding:14px}.card-header{flex-direction:column;align-items:flex-start;gap:8px}.btn{padding:12px 20px;font-size:14px;min-height:44px}.btn-sm{padding:10px 14px;font-size:13px;min-height:44px}.form-input,.form-select{padding:12px;font-size:16px;min-height:44px}.form-label{font-size:12px}.auth-card{padding:24px 18px;margin:12px}.auth-card .logo-big{font-size:22px}.auth-tabs .auth-tab{padding:12px;font-size:13px;min-height:44px}.toast{left:12px;right:12px;max-width:none;top:12px}table{font-size:11px}th{padding:6px 8px;font-size:9px}td{padding:8px}td .btn-sm{padding:8px 10px;min-height:44px}.nav-item{padding:14px 20px;font-size:14px;min-height:44px}.badge{font-size:9px}.alert{font-size:12px;padding:12px}.form-group{margin-bottom:14px}.form-row{flex-direction:column}.form-row>*{width:100%!important;flex:none!important;min-width:0!important;max-width:100%!important}}
+code{background:var(--surface2);padding:2px 6px;border-radius:3px;font-family:var(--fm);font-size:12px}.form-row{display:flex;gap:10px;flex-wrap:wrap}.form-row>*{min-width:0}
+.pw-wrap{position:relative}.pw-wrap input{padding-right:40px}.pw-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}.pw-toggle:hover{color:var(--text)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const API='/api';
+const TOKEN_KEY='vk_token';
+let U=null,P='dashboard';
+
+function getToken(){return localStorage.getItem(TOKEN_KEY)}
+function setToken(t){if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}
+
+async function api(p,o={}){
+  const headers={'Content-Type':'application/json',...o.headers};
+  const tok=getToken();
+  if(tok)headers['Authorization']='Bearer '+tok;
+  const r=await fetch(`${API}${p}`,{
+    headers,
+    credentials:'same-origin',
+    ...o,
+    body:o.body?JSON.stringify(o.body):undefined
+  });
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw{status:r.status,...d};
+  return d;
+}
+
+function toast(m,t='success'){
+  const e=document.createElement('div');
+  e.className=`toast toast-${t}`;
+  e.textContent=m;
+  document.body.appendChild(e);
+  requestAnimationFrame(()=>e.classList.add('show'));
+  setTimeout(()=>{e.classList.remove('show');setTimeout(()=>e.remove(),300)},3000);
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+document.addEventListener('click',function(e){
+  const btn=e.target.closest('[data-action]');
+  if(!btn)return;
+  e.preventDefault();
+  const a=btn.dataset.action,id=btn.dataset.id;
+  switch(a){
+    case'dk':dk(id);break;
+    case'dp':dp(id);break;
+    case'tu':tu(id,btn.dataset.val==='true');break;
+    case'editCredits':showCreditManager(id,btn.dataset.username);break;
+    case'ri':ri(id);break;
+    case'reviewFlag':reviewFlag(id,btn.dataset.status);break;
+    case'nav':nav(id);break;
+    case'toggleSidebar':document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.sidebar-overlay').classList.toggle('open');break;
+    case'closeSidebar':document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open');break;
+    case'togglePw':{const inp=btn.closest('.pw-wrap')?.querySelector('input');if(inp){const show=inp.type==='password';inp.type=show?'text':'password';btn.innerHTML=show?'&#9675;':'&#9673;'}break}
+  }
+});
+
+document.addEventListener('change',function(e){
+  const selRole=e.target.closest('[data-action="cr"]');
+  if(selRole){
+    const id=selRole.dataset.id,role=selRole.value;
+    if(role==='superadmin'&&!confirm('Promote this user to SUPERADMIN? This grants full system access.')){renderPage();return}
+    cr(id,role);
+    return;
+  }
+  const selTier=e.target.closest('[data-action="ct"]');
+  if(selTier){ct(selTier.dataset.id,selTier.value);return}
+});
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    document.querySelector('.sidebar')?.classList.remove('open');
+    document.querySelector('.sidebar-overlay')?.classList.remove('open');
+    return;
+  }
+  if(e.key!=='Enter')return;
+  const inp=e.target;
+  if(!inp.matches('.form-input,.form-select')||inp.tagName==='TEXTAREA')return;
+  const card=inp.closest('.card,.auth-card');
+  if(!card)return;
+  const btn=card.querySelector('.btn-primary');
+  if(btn){e.preventDefault();btn.click()}
+});
+
+function nav(p){
+  P=p;
+  render();
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===p));
+  document.querySelector('.sidebar')?.classList.remove('open');
+  document.querySelector('.sidebar-overlay')?.classList.remove('open');
+}
+window.navigate=nav;
+
+window.showCreditManager=async(userId,username)=>{
+  try{
+    const res=await api(`/admin/users/${userId}/credits`);
+    const currentBal=(res.credits?.balance_microdollars||0)/1000000;
+    const lifetime=(res.credits?.lifetime_used||0)/1000000;
+    const m=document.createElement('div');
+    m.className='sidebar-overlay open';
+    m.style.cssText='display:flex;align-items:center;justify-content:center;z-index:1000';
+    m.innerHTML=`
+      <div class="card" style="width:100%;max-width:400px;background:var(--surface);position:relative;z-index:1001;box-shadow:var(--shadow)">
+        <div class="card-header"><span class="card-title">Manage Credits: ${esc(username)}</span></div>
+        <div style="margin-bottom:16px;font-size:13px">
+          <div>Current Balance: <strong style="color:var(--green)">$${currentBal.toFixed(4)}</strong></div>
+          <div style="color:var(--text-dim)">Lifetime Used: $${lifetime.toFixed(4)}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Action</label>
+          <select class="form-select" id="cred-action">
+            <option value="add">Add Credits (+)</option>
+            <option value="set">Set Exact Balance (=)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount ($)</label>
+          <input class="form-input" type="number" step="0.01" min="0" id="cred-amount" placeholder="e.g. 5.00"/>
+        </div>
+        <div class="form-row">
+          <button class="btn btn-primary" id="cred-save">Apply</button>
+          <button class="btn" id="cred-cancel">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    document.getElementById('cred-cancel').onclick=()=>m.remove();
+    document.getElementById('cred-save').onclick=async()=>{
+      const amt=parseFloat(document.getElementById('cred-amount').value);
+      if(isNaN(amt)||amt<0)return toast('Invalid amount','error');
+      const action=document.getElementById('cred-action').value;
+      const micro=Math.round(amt*1000000);
+      try{
+        document.getElementById('cred-save').disabled=true;
+        if(action==='set'){
+          await api(`/admin/users/${userId}/credits`,{method:'PUT',body:{balance:micro}});
+          toast(`Balance set to $${amt.toFixed(4)}`);
+        }else{
+          await api(`/admin/users/${userId}/credits`,{method:'POST',body:{amount:micro}});
+          toast(`Added $${amt.toFixed(4)}`);
+        }
+        m.remove();
+      }catch(e){
+        toast(e.error||'Failed','error');
+        document.getElementById('cred-save').disabled=false;
+      }
+    };
+  }catch(e){toast(e.error||'Failed to fetch credits','error')}
+};
+
+function render(){
+  const a=document.getElementById('app');
+  if(!U){a.innerHTML=renderAuth();bindAuth()}
+  else{a.innerHTML=renderShell();bindShell();renderPage()}
+}
+
+function renderAuth(){
+  return`<div class="auth-screen"><div class="auth-card"><div class="logo-big">VIXKNIGHT</div><div class="subtitle">AI RP Key Proxy</div><div class="auth-tabs"><button class="auth-tab active" data-tab="login">Login</button><button class="auth-tab" data-tab="register">Register</button></div><div id="auth-form">${loginForm()}</div><div id="auth-error" style="color:var(--red);font-size:12px;margin-top:12px;text-align:center"></div></div></div>`;
+}
+
+function loginForm(){
+  return`<div class="form-group"><label class="form-label">Username</label><input class="form-input" id="l-u" type="text" autocomplete="username"/></div><div class="form-group"><label class="form-label">Password</label><div class="pw-wrap"><input class="form-input" id="l-p" type="password" autocomplete="current-password"/><button type="button" class="pw-toggle" data-action="togglePw" tabindex="-1">&#9673;</button></div></div><div class="form-group" id="totp-g" style="display:none"><label class="form-label">2FA Code</label><input class="form-input" id="l-t" maxlength="6" placeholder="000000"/></div><button class="btn btn-primary btn-block" id="login-btn">Sign In</button>`;
+}
+
+function regForm(){
+  return`<div class="form-group"><label class="form-label">Username</label><input class="form-input" id="r-u" type="text" autocomplete="username"/></div><div class="form-group"><label class="form-label">Password (10+ chars, mixed case + number)</label><div class="pw-wrap"><input class="form-input" id="r-p" type="password" autocomplete="new-password"/><button type="button" class="pw-toggle" data-action="togglePw" tabindex="-1">&#9673;</button></div></div><div class="form-group"><label class="form-label">Invite Code (optional — for admin access)</label><input class="form-input" id="r-i" placeholder="Leave blank for basic access"/></div><button class="btn btn-primary btn-block" id="reg-btn">Create Account</button>`;
+}
+
+function bindAuth(){
+  document.querySelectorAll('.auth-tab').forEach(t=>{
+    t.onclick=()=>{
+      document.querySelectorAll('.auth-tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('auth-form').innerHTML=t.dataset.tab==='login'?loginForm():regForm();
+      document.getElementById('auth-error').textContent='';
+      bindActions();
+    };
+  });
+  bindActions();
+}
+
+function bindActions(){
+  const lb=document.getElementById('login-btn');
+  if(lb){
+    lb.onclick=async()=>{
+      const e=document.getElementById('auth-error');
+      e.textContent='';
+      try{
+        const b={username:document.getElementById('l-u').value,password:document.getElementById('l-p').value};
+        const t=document.getElementById('l-t')?.value;
+        if(t)b.totpCode=t;
+        const d=await api('/auth/login',{method:'POST',body:b});
+        if(d.requires2FA){
+          document.getElementById('totp-g').style.display='block';
+          document.getElementById('l-t').focus();
+          return;
+        }
+        setToken(d.token);
+        U=d.user;
+        nav('dashboard');
+      }catch(x){e.textContent=x.error||'Login failed'}
+    };
+    ['l-u','l-p','l-t'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.onkeydown=e=>{if(e.key==='Enter')lb.click()};
+    });
+  }
+  const rb=document.getElementById('reg-btn');
+  if(rb){
+    rb.onclick=async()=>{
+      const e=document.getElementById('auth-error');
+      e.textContent='';
+      try{
+        const d=await api('/auth/register',{method:'POST',body:{
+          username:document.getElementById('r-u').value,
+          password:document.getElementById('r-p').value,
+          inviteCode:document.getElementById('r-i').value||undefined
+        }});
+        setToken(d.token);
+        U=d.user;
+        toast('Account created');
+        nav('dashboard');
+      }catch(x){e.textContent=x.error||x.details?.join(', ')||'Failed'}
+    };
+  }
+}
+
+function renderShell(){
+  const isA=['admin','superadmin'].includes(U.role),isS=U.role==='superadmin';
+  return`<div class="app"><div class="sidebar-overlay" data-action="closeSidebar"></div><nav class="sidebar"><div class="logo"><h1>VIXKNIGHT</h1><div class="tagline">AI RP Key Proxy</div></div><div class="nav"><div class="nav-section">Main</div><div class="nav-item active" data-page="dashboard"><span class="icon">⚔</span>Dashboard</div><div class="nav-item" data-page="keys"><span class="icon">🔑</span>Proxy Keys</div><div class="nav-item" data-page="models"><span class="icon">🤖</span>Models</div><div class="nav-item" data-page="personas"><span class="icon">🎭</span>Personas</div><div class="nav-item" data-page="logs"><span class="icon">📋</span>Usage Logs</div><div class="nav-item" data-page="community"><span class="icon">🌐</span>Explore</div><div class="nav-item" data-page="settings"><span class="icon">⚙</span>Settings</div><div class="nav-section admin-only ${isA?'visible':''}">Administration</div><div class="nav-item admin-only ${isA?'visible':''}" data-page="admin-users"><span class="icon">👥</span>Users</div><div class="nav-item admin-only ${isA?'visible':''}" data-page="admin-safety"><span class="icon">⚠</span>Safety</div><div class="nav-item admin-only ${isS?'visible':''}" data-page="admin-tiers"><span class="icon">⏱</span>Tiers &amp; Limits</div><div class="nav-item admin-only ${isS?'visible':''}" data-page="admin-invites"><span class="icon">🎟</span>Invite Codes</div><div class="nav-item admin-only ${isA?'visible':''}" data-page="admin-audit"><span class="icon">🔍</span>Audit Log</div></div><div class="sidebar-footer"><span class="username">${U.username}</span><span class="role-badge ${U.role}">${U.role}</span><br><button class="logout-btn" id="logout-btn">↳ Sign out</button></div></nav><div class="main"><div class="mobile-header"><button class="hamburger" data-action="toggleSidebar">☰</button><span style="font-family:var(--fd);color:var(--accent);font-size:16px;letter-spacing:2px">VIXKNIGHT</span><span style="width:44px"></span></div><div class="content" id="pc"></div></div></div>`;
+}
+
+function bindShell(){
+  document.querySelectorAll('.nav-item').forEach(i=>{i.onclick=()=>nav(i.dataset.page)});
+  document.getElementById('logout-btn').onclick=async()=>{
+    await api('/auth/logout',{method:'POST'}).catch(()=>{});
+    setToken(null);
+    U=null;
+    render();
+  };
+}
+
+async function renderPage(){
+  const el=document.getElementById('pc');
+  const pages={
+    dashboard:pgDash,keys:pgKeys,models:pgModels,personas:pgPersonas,
+    logs:pgLogs,community:pgComm,settings:pgSettings,
+    'admin-users':pgAdminUsers,'admin-safety':pgAdminSafety,
+    'admin-tiers':pgAdminTiers,'admin-invites':pgAdminInvites,'admin-audit':pgAdminAudit
+  };
+  (pages[P]||pgDash)(el);
+}
+
+async function pgDash(el){
+  el.innerHTML=`<div class="page-title">Dashboard</div><div class="page-subtitle">Your AI proxy at a glance</div><div class="stat-grid" id="sg"></div><div class="card"><div class="card-header"><span class="card-title">Quick Start — Connect Your RP Frontend</span></div><div class="alert alert-info"><strong>Base URL:</strong> <code>${location.origin}/v1</code></div><p style="font-size:13px;color:var(--text-dim)">1. Generate a proxy key in <a href="#" data-action="nav" data-id="keys" style="color:var(--accent)">Proxy Keys</a><br>2. In SillyTavern / Risu / Agnai, set:<br>&nbsp;&nbsp;• <strong>API Type:</strong> OpenAI / Chat Completions<br>&nbsp;&nbsp;• <strong>API URL:</strong> <code>${location.origin}/v1</code><br>&nbsp;&nbsp;• <strong>API Key:</strong> your <code>vxk_...</code> proxy key<br>3. Select a model from the available list and start chatting</p></div>`;
+  try{
+    const d=await api('/logs/stats');
+    const c=d.credits||{},t=d.today||{},tier=d.tier||'free';
+    const bal=(c.balance||0)/1000000;
+    const costToday=(t.cost_today||0)/1000000;
+    const lifeUsed=(c.lifetimeUsed||0)/1000000;
+    const dc=d.dailyCounters||{},lim=d.limits||{};
+    document.getElementById('sg').innerHTML=`
+      <div class="stat-card"><div class="stat-value" style="color:var(--accent)">${tier.toUpperCase()}</div><div class="stat-label">Tier</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--green)">$${bal.toFixed(4)}</div><div class="stat-label">Credits</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--blue)">${(dc.requests||0).toLocaleString()} / ${(lim.rpd||0).toLocaleString()}</div><div class="stat-label">Requests Today</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--accent)">${(dc.messages||0).toLocaleString()}${lim.maxMessagesPerDay?' / '+lim.maxMessagesPerDay.toLocaleString():''}</div><div class="stat-label">Messages Today</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--orange)">$${costToday.toFixed(4)}</div><div class="stat-label">Today's Cost<br><span style="font-size:9px;color:var(--text-dim);text-transform:none">Lifetime: $${lifeUsed.toFixed(4)}</span></div></div>
+      <div class="stat-card"><div class="stat-value" style="font-size:12px;color:var(--text-muted)">Midnight UTC</div><div class="stat-label">Resets At</div></div>`;
+  }catch(e){}
+}
+
+async function pgKeys(el){
+  el.innerHTML=`<div class="page-title">Proxy Keys</div><div class="page-subtitle">Generate keys to authenticate your RP frontend with VixKnight</div><div class="card"><div class="card-header"><span class="card-title">Generate New Key</span></div><div class="form-row"><input class="form-input" id="pkl" placeholder="Label (e.g. SillyTavern)" style="flex:1"/><button class="btn btn-primary" id="gpk">Generate Key</button></div><div id="nkr" style="margin-top:12px"></div></div><div class="alert alert-info" style="margin-bottom:16px"><strong>How to use:</strong> Set your RP frontend's API URL to <code>${location.origin}/v1</code> and paste your <code>vxk_...</code> key as the API key.</div><div id="kls"></div>`;
+  document.getElementById('gpk').onclick=async()=>{
+    try{
+      const d=await api('/proxy-keys',{method:'POST',body:{label:document.getElementById('pkl').value}});
+      document.getElementById('nkr').innerHTML=`<div class="alert alert-warn" style="font-family:var(--fm);word-break:break-all"><strong>Your key (copy now — shown only once):</strong><br><code style="font-size:14px;user-select:all">${d.key.key}</code></div>`;
+      document.getElementById('pkl').value='';
+      lk();
+    }catch(e){toast(e.error||'Failed','error')}
+  };
+  lk();
+}
+
+async function lk(){
+  try{
+    const{keys:k}=await api('/proxy-keys');
+    const l=document.getElementById('kls');
+    if(!k.length){l.innerHTML='<div class="empty"><div class="icon">🔑</div>No proxy keys yet. Generate one above to get started.</div>';return}
+    l.innerHTML=`<div class="card"><div class="table-wrap"><table><tr><th>Key</th><th>Label</th><th>Status</th><th>Created</th><th>Last Used</th><th></th></tr>${k.map(x=>`<tr><td style="font-family:var(--fm);font-size:12px;color:var(--text-dim)">${x.key_prefix}</td><td>${esc(x.label||'—')}</td><td><span class="badge ${x.is_active?'badge-active':'badge-inactive'}">${x.is_active?'Active':'Off'}</span></td><td style="font-size:11px;color:var(--text-muted)">${new Date(x.created_at).toLocaleDateString()}</td><td style="font-size:11px;color:var(--text-muted)">${x.last_used?new Date(x.last_used).toLocaleDateString():'Never'}</td><td><button class="btn btn-danger btn-sm" data-action="dk" data-id="${x.id}">Revoke</button></td></tr>`).join('')}</table></div></div>`;
+  }catch(e){}
+}
+
+window.dk=async id=>{
+  if(!confirm('Revoke this proxy key? Connections using it will stop working.'))return;
+  try{await api(`/proxy-keys/${id}`,{method:'DELETE'});toast('Key revoked');lk()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgModels(el){
+  el.innerHTML=`<div class="page-title">Available Models</div><div class="page-subtitle">Models you can use through the proxy (filtered by your tier)</div><div id="mlt"></div>`;
+  try{
+    // Need a vxk_ key to query /v1/models. Show a hint instead of failing silently.
+    const{keys:k}=await api('/proxy-keys');
+    if(!k.length){
+      document.getElementById('mlt').innerHTML='<div class="alert alert-warn">Generate a proxy key first to view available models.</div>';
+      return;
+    }
+    document.getElementById('mlt').innerHTML='<div class="alert alert-info">Available models depend on your tier and the upstream new-api configuration. Use <code>GET '+location.origin+'/v1/models</code> with your vxk_ key to list them programmatically.</div>';
+  }catch(e){
+    document.getElementById('mlt').innerHTML='<div class="alert alert-warn">Failed to load.</div>';
+  }
+}
+
+async function pgPersonas(el){
+  el.innerHTML=`<div class="page-title">Personas</div><div class="page-subtitle">System prompts &amp; model configs</div><div class="card"><div class="card-header"><span class="card-title">New Persona</span></div><div class="form-group"><label class="form-label">Name</label><input class="form-input" id="pn" placeholder="My RP Persona"/></div><div class="form-group"><label class="form-label">System Prompt</label><textarea class="form-input" id="pp" rows="4" placeholder="You are..." style="resize:vertical"></textarea></div><div class="form-row" style="margin-bottom:12px"><input class="form-input" id="pm" placeholder="Model (e.g. openai/gpt-4o)" style="flex:1;min-width:150px"/><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)"><input type="checkbox" id="ppub"/> Public</label></div><button class="btn btn-primary" id="ap">Create</button></div><div id="pls"></div>`;
+  document.getElementById('ap').onclick=async()=>{
+    try{
+      await api('/personas',{method:'POST',body:{
+        name:document.getElementById('pn').value,
+        systemPrompt:document.getElementById('pp').value,
+        model:document.getElementById('pm').value||undefined,
+        isPublic:document.getElementById('ppub').checked
+      }});
+      toast('Created');
+      document.getElementById('pn').value='';
+      document.getElementById('pp').value='';
+      lp();
+    }catch(e){toast(e.error||'Failed','error')}
+  };
+  lp();
+}
+
+async function lp(){
+  try{
+    const{personas:p}=await api('/personas');
+    const l=document.getElementById('pls');
+    if(!p.length){l.innerHTML='<div class="empty"><div class="icon">🎭</div>No personas yet</div>';return}
+    l.innerHTML=p.map(x=>`<div class="card"><div class="card-header"><span class="card-title">${esc(x.name)}${x.is_public?' 🌐':''}</span><div><span class="badge badge-provider">${esc(x.model||'')}</span><button class="btn btn-danger btn-sm" style="margin-left:8px" data-action="dp" data-id="${x.id}">✕</button></div></div><p style="font-size:12px;color:var(--text-dim);font-family:var(--fm);white-space:pre-wrap;max-height:80px;overflow:hidden">${esc(x.system_prompt.slice(0,300))}${x.system_prompt.length>300?'...':''}</p></div>`).join('');
+  }catch(e){}
+}
+
+window.dp=async id=>{
+  if(!confirm('Delete?'))return;
+  try{await api(`/personas/${id}`,{method:'DELETE'});toast('Deleted');lp()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgLogs(el){
+  el.innerHTML=`<div class="page-title">Usage Logs</div><div class="page-subtitle">Cost tracking — message content is never stored</div><div id="lt"></div>`;
+  try{
+    const{logs:l}=await api('/logs/usage');
+    const t=document.getElementById('lt');
+    if(!l.length){t.innerHTML='<div class="empty"><div class="icon">📋</div>No requests yet</div>';return}
+    t.innerHTML=`<div class="card"><div class="table-wrap"><table><tr><th>Time</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Status</th></tr>${l.map(x=>`<tr><td style="font-size:11px;color:var(--text-muted)">${new Date(x.created_at).toLocaleString()}</td><td style="font-family:var(--fm);font-size:11px">${esc(x.model)}</td><td style="font-family:var(--fm);font-size:11px">${x.prompt_tokens}→${x.completion_tokens}</td><td style="font-family:var(--fm);font-size:11px;color:var(--orange)">$${((x.cost_microdollars||0)/1000000).toFixed(4)}</td><td style="font-family:var(--fm);font-size:11px">${x.latency_ms||'—'}ms</td><td><span class="badge ${(x.status_code||200)<400?'badge-active':'badge-inactive'}">${x.status_code||200}</span></td></tr>`).join('')}</table></div></div>`;
+  }catch(e){}
+}
+
+async function pgComm(el){
+  el.innerHTML=`<div class="page-title">Explore</div><div class="page-subtitle">Community-shared personas</div><div id="cl"></div>`;
+  try{
+    const{personas:p}=await api('/personas/community');
+    const l=document.getElementById('cl');
+    if(!p.length){l.innerHTML='<div class="empty"><div class="icon">🌐</div>No shared personas yet</div>';return}
+    l.innerHTML=p.map(x=>`<div class="card"><div class="card-header"><span class="card-title">${esc(x.name)}</span><span style="font-size:11px;color:var(--text-muted)">by ${esc(x.author)}</span></div><p style="font-size:12px;color:var(--text-dim);max-height:60px;overflow:hidden">${esc(x.system_prompt.slice(0,200))}...</p></div>`).join('');
+  }catch(e){}
+}
+
+async function pgSettings(el){
+  el.innerHTML=`<div class="page-title">Settings</div><div class="page-subtitle">Account security</div><div class="card"><div class="card-header"><span class="card-title">Change Password</span></div><div class="form-group"><label class="form-label">Current Password</label><div class="pw-wrap"><input class="form-input" id="pc1" type="password"/><button type="button" class="pw-toggle" data-action="togglePw" tabindex="-1">&#9673;</button></div></div><div class="form-group"><label class="form-label">New Password</label><div class="pw-wrap"><input class="form-input" id="pn1" type="password"/><button type="button" class="pw-toggle" data-action="togglePw" tabindex="-1">&#9673;</button></div></div><button class="btn btn-primary" id="cpb">Update</button></div><div class="card"><div class="card-header"><span class="card-title">Two-Factor Authentication</span></div><p style="font-size:13px;color:var(--text-dim)">2FA setup endpoints not yet wired up in v2 backend. Coming soon.</p></div>`;
+  document.getElementById('cpb').onclick=async()=>{
+    try{
+      await api('/auth/change-password',{method:'POST',body:{
+        currentPassword:document.getElementById('pc1').value,
+        newPassword:document.getElementById('pn1').value
+      }});
+      toast('Password changed — log in again');
+      setToken(null);
+      U=null;
+      render();
+    }catch(e){toast(e.error||'Failed','error')}
+  };
+}
+
+async function pgAdminUsers(el){
+  const isS=U.role==='superadmin';
+  el.innerHTML=`<div class="page-title">User Management</div><div class="page-subtitle">Activate, deactivate, manage roles, and user plans/tiers</div><div id="aut"></div>`;
+  try{
+    const{users:u}=await api('/admin/users');
+    document.getElementById('aut').innerHTML=`<div class="card"><div class="table-wrap"><table>
+      <tr><th>Username</th><th>Role</th><th>Plan / Tier</th><th>Status</th><th>2FA</th><th>Last Login</th><th>Actions</th></tr>
+      ${u.map(x=>`<tr>
+        <td style="font-family:var(--fm)">${esc(x.username)}</td>
+        <td>${isS&&x.id!==U.id&&x.role!=='superadmin'?
+          `<select class="form-select" style="width:auto;padding:4px 8px;font-size:11px;min-height:32px" data-action="cr" data-id="${x.id}">
+            <option value="user"${x.role==='user'?' selected':''}>user</option>
+            <option value="admin"${x.role==='admin'?' selected':''}>admin</option>
+            <option value="superadmin">superadmin</option>
+          </select>`:
+          `<span class="role-badge ${x.role}">${x.role}</span>`}
+        </td>
+        <td>${(U.role==='admin'||isS)&&x.id!==U.id&&x.role!=='superadmin'?
+          `<select class="form-select" style="width:auto;padding:4px 8px;font-size:11px;min-height:32px;background:var(--surface2)" data-action="ct" data-id="${x.id}">
+            <option value="free"${(x.tier||'free')==='free'?' selected':''}>Free</option>
+            <option value="basic"${x.tier==='basic'?' selected':''}>Basic</option>
+            <option value="pro"${x.tier==='pro'?' selected':''}>Pro</option>
+            <option value="unlimited"${x.tier==='unlimited'?' selected':''}>Unlimited</option>
+          </select>`:
+          `<span class="badge badge-provider">${(x.tier||'free').toUpperCase()}</span>`}
+        </td>
+        <td><span class="badge ${x.is_active?'badge-active':'badge-inactive'}">${x.is_active?'Active':'Off'}</span></td>
+        <td>${x.totp_enabled?'✓':'—'}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${x.last_login?new Date(x.last_login).toLocaleDateString():'Never'}</td>
+        <td>
+          ${x.id!==U.id&&x.role!=='superadmin'?
+            `<button class="btn btn-sm ${x.is_active?'btn-danger':''}" data-action="tu" data-id="${x.id}" data-val="${!x.is_active}">${x.is_active?'Disable':'Enable'}</button>`:
+            ''}
+          ${isS?`<button class="btn btn-sm" style="background:var(--green);color:var(--bg-deep);margin-left:4px" data-action="editCredits" data-id="${x.id}" data-username="${esc(x.username)}">$ Credits</button>`:''}
+        </td>
+      </tr>`).join('')}
+    </table></div></div>`;
+  }catch(e){
+    el.innerHTML+=`<div class="alert alert-warn">${e.error||'Access denied'}</div>`;
+  }
+}
+
+window.tu=async(id,a)=>{
+  try{await api(`/admin/users/${id}/active`,{method:'PATCH',body:{active:a}});toast(a?'Activated':'Disabled');renderPage()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+window.cr=async(id,role)=>{
+  try{await api(`/admin/users/${id}/role`,{method:'PATCH',body:{role}});toast(`Role changed to ${role}`);renderPage()}
+  catch(e){toast(e.error||'Failed','error');renderPage()}
+};
+window.ct=async(id,tier)=>{
+  try{await api(`/admin/users/${id}/tier`,{method:'PATCH',body:{tier}});toast(`Tier changed to ${tier.toUpperCase()}`);renderPage()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgAdminInvites(el){
+  el.innerHTML=`<div class="page-title">Invite Codes</div><div class="page-subtitle">One-time codes for admin access</div><div class="card"><div class="form-row" style="align-items:center"><select class="form-select" id="ir" style="width:auto"><option value="admin">Admin</option><option value="superadmin">Superadmin</option></select><input class="form-input" id="ih" type="number" placeholder="Expires in hours (optional)" style="width:200px"/><button class="btn btn-primary" id="cib">Generate</button></div><div id="ni" style="margin-top:12px"></div></div><div id="ils"></div>`;
+  document.getElementById('cib').onclick=async()=>{
+    try{
+      const h=document.getElementById('ih').value;
+      const role=document.getElementById('ir').value;
+      const d=await api('/admin/invite-codes',{method:'POST',body:{role,expiresInHours:h?parseInt(h):undefined}});
+      document.getElementById('ni').innerHTML=`<div class="alert alert-info" style="font-family:var(--fm);word-break:break-all"><strong>Code:</strong> <code style="user-select:all">${d.code}</code><br><small>Share once — cannot be retrieved again.</small></div>`;
+      li();
+    }catch(e){toast(e.error||'Failed','error')}
+  };
+  li();
+}
+
+async function li(){
+  try{
+    const{codes:c}=await api('/admin/invite-codes');
+    document.getElementById('ils').innerHTML=`<div class="card"><div class="table-wrap"><table><tr><th>Code</th><th>Role</th><th>Status</th><th>Used By</th><th>Expires</th><th></th></tr>${c.map(x=>`<tr><td style="font-family:var(--fm);font-size:11px">${x.code.slice(0,16)}...</td><td><span class="role-badge admin">${x.role}</span></td><td><span class="badge ${x.is_used?'badge-inactive':'badge-active'}">${x.is_used?'Used':'Open'}</span></td><td>${esc(x.used_by_name||'—')}</td><td style="font-size:11px;color:var(--text-muted)">${x.expires_at?new Date(x.expires_at).toLocaleDateString():'Never'}</td><td>${!x.is_used?`<button class="btn btn-danger btn-sm" data-action="ri" data-id="${x.code}">Revoke</button>`:''}</td></tr>`).join('')}</table></div></div>`;
+  }catch(e){}
+}
+
+window.ri=async c=>{
+  if(!confirm('Revoke?'))return;
+  try{await api(`/admin/invite-codes/${c}`,{method:'DELETE'});toast('Revoked');li()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgAdminSafety(el){
+  el.innerHTML=`<div class="page-title">Content Safety</div><div class="page-subtitle">Review flagged content</div><div class="stat-grid" id="sfsg"></div><div id="sfl"></div>`;
+  try{
+    const{stats:s}=await api('/admin/safety/stats');
+    document.getElementById('sfsg').innerHTML=`
+      <div class="stat-card"><div class="stat-value" style="color:var(--red)">${s.pending||0}</div><div class="stat-label">Pending</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--orange)">${s.total||0}</div><div class="stat-label">Total Flags</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--green)">${s.confirmed||0}</div><div class="stat-label">Confirmed</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--text-dim)">${s.dismissed||0}</div><div class="stat-label">Dismissed</div></div>`;
+  }catch(e){}
+  try{
+    const{flags:f}=await api('/admin/safety/flags');
+    const fl=document.getElementById('sfl');
+    if(!f.length){fl.innerHTML='<div class="empty"><div class="icon">⚠</div>No content flags — all clear</div>';return}
+    fl.innerHTML=f.map(x=>`<div class="card" style="border-color:${x.status==='pending'?'var(--red)':'var(--border)'}"><div class="card-header"><span class="card-title" style="color:${x.severity==='critical'?'var(--red)':'var(--orange)'}">${x.flag_type.toUpperCase()} — ${x.severity}</span><div><span class="badge ${x.status==='pending'?'badge-inactive':'badge-active'}">${x.status}</span></div></div><div style="font-size:12px;margin-bottom:8px"><strong>User:</strong> <span style="font-family:var(--fm)">${esc(x.username)}</span> · <span style="color:var(--text-muted)">${new Date(x.created_at).toLocaleString()}</span></div><div style="font-size:11px;color:var(--text-muted);margin-bottom:8px"><strong>Matched:</strong> ${esc(x.matched_patterns.join(', '))}</div><details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)">View flagged message content</summary><pre style="background:var(--bg);padding:12px;border-radius:var(--radius-sm);font-size:11px;max-height:200px;overflow:auto;margin-top:8px;white-space:pre-wrap;word-break:break-word;color:var(--text-dim)">${esc(x.message_content||'').slice(0,5000)}</pre></details>${x.status==='pending'?`<div class="form-row"><button class="btn btn-danger btn-sm" data-action="reviewFlag" data-id="${x.id}" data-status="confirmed">Confirm Violation</button><button class="btn btn-sm" data-action="reviewFlag" data-id="${x.id}" data-status="dismissed">Dismiss</button></div>`:''}</div>`).join('');
+  }catch(e){
+    el.innerHTML+=`<div class="alert alert-warn">${e.error||'Access denied'}</div>`;
+  }
+}
+
+window.reviewFlag=async(id,status)=>{
+  try{await api(`/admin/safety/flags/${id}`,{method:'PATCH',body:{status}});toast(`Flag ${status}`);renderPage()}
+  catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgAdminTiers(el){
+  el.innerHTML=`<div class="page-title">Tiers &amp; Rate Limits</div><div class="page-subtitle">Configure RPM, RPD, message limits, and model access per tier. Resets daily at midnight UTC.</div><div id="rl-tiers"></div>`;
+  try{
+    const{tiers}=await api('/admin/tiers');
+    document.getElementById('rl-tiers').innerHTML=tiers.map(t=>`<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${t.tier.toUpperCase()} Tier</span><span class="role-badge ${t.tier}" style="margin-left:8px">${t.tier}</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:12px"><div><label class="form-label">RPM</label><input class="form-input" type="number" min="1" id="rpm-${t.tier}" value="${t.rate_limit_rpm}"></div><div><label class="form-label">RPD</label><input class="form-input" type="number" min="1" id="rpd-${t.tier}" value="${t.rate_limit_rpd}"></div><div><label class="form-label">Messages/Day (0=∞)</label><input class="form-input" type="number" min="0" id="mpd-${t.tier}" value="${t.max_messages_per_day||0}"></div><div><label class="form-label">Max Context Tokens</label><input class="form-input" type="number" min="1" id="ctx-${t.tier}" value="${t.max_context_tokens}"></div><div><label class="form-label">Price Multiplier</label><input class="form-input" type="number" step="0.01" min="0.1" max="10" id="pm-${t.tier}" value="${t.price_multiplier}"></div></div><div><label class="form-label">Allowed Models (one pattern per line, * for all)</label><textarea class="form-input" id="am-${t.tier}" rows="3" style="font-family:var(--fm);font-size:12px">${esc((t.allowed_models||[]).join('\n'))}</textarea></div><button class="btn btn-primary" style="margin-top:12px" onclick="saveTier('${t.tier}')">Save ${t.tier}</button></div>`).join('');
+  }catch(e){
+    document.getElementById('rl-tiers').innerHTML=`<div class="alert alert-warn">${e.error||'Failed to load tiers'}</div>`;
+  }
+}
+
+window.saveTier=async(tier)=>{
+  const rpm=parseInt(document.getElementById('rpm-'+tier).value);
+  const rpd=parseInt(document.getElementById('rpd-'+tier).value);
+  const mpd=parseInt(document.getElementById('mpd-'+tier).value);
+  const ctx=parseInt(document.getElementById('ctx-'+tier).value);
+  const pm=parseFloat(document.getElementById('pm-'+tier).value);
+  const am=document.getElementById('am-'+tier).value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!rpm||!rpd||!ctx||isNaN(pm)){toast('Fill all fields','error');return}
+  try{
+    await api(`/admin/tiers/${tier}`,{method:'PUT',body:{
+      rateLimitRpm:rpm,rateLimitRpd:rpd,maxMessagesPerDay:mpd||0,
+      maxContextTokens:ctx,allowedModels:am,priceMultiplier:pm
+    }});
+    toast(`${tier} tier updated`);
+  }catch(e){toast(e.error||'Failed','error')}
+};
+
+async function pgAdminAudit(el){
+  el.innerHTML=`<div class="page-title">Audit Log</div><div class="page-subtitle">Every admin action is tracked</div><div id="alt"></div>`;
+  try{
+    const{logs:l}=await api('/admin/audit-log');
+    document.getElementById('alt').innerHTML=`<div class="card"><div class="table-wrap"><table><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th></tr>${l.map(x=>`<tr><td style="font-size:11px;color:var(--text-muted)">${new Date(x.created_at).toLocaleString()}</td><td style="font-family:var(--fm)">${esc(x.actor_name)}</td><td>${esc(x.action)}</td><td style="font-size:11px">${x.target_type?`${esc(x.target_type)}/${(x.target_id||'').toString().slice(0,8)}`:''}</td><td style="font-size:11px;color:var(--text-muted)">${esc(x.ip_address||'—')}</td></tr>`).join('')}</table></div></div>`;
+  }catch(e){
+    el.innerHTML+=`<div class="alert alert-warn">${e.error||'Access denied'}</div>`;
+  }
+}
+
+(async()=>{
+  if(getToken()){
+    try{const{user:u}=await api('/auth/me');U=u}
+    catch(e){setToken(null)}
+  }
+  render();
+})();
+</script>
+</body>
+</html>

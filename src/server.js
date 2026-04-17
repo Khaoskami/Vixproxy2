@@ -1,82 +1,159 @@
 import express from 'express';
-import helmet from 'helmet';
-import cors from 'cors';
-import hpp from 'hpp';
-import session from 'express-session';
-import sessionFileStore from 'session-file-store';
-import rateLimit from 'express-rate-limit';
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import logger from './utils/logger.js';
+import config from './config/index.js';
+import logger, { logRequest } from './utils/logger.js';
+import {
+  securityHeaders,
+  corsPolicy,
+  v1Cors,
+  globalLimiter,
+  requestMeta,
+  paramProtection,
+  globalErrorHandler,
+} from './middleware/security.js';
+import { ensureSchema, supabase } from './models/supabase.js';
+import { checkHealth as checkNewApiHealth } from './services/NewApiService.js';
 
-// Init DB
-import './models/database.js';
-
-// Routes
 import authRoutes from './routes/auth.js';
-import proxyRoutes from './routes/proxy.js';
-import userRoutes from './routes/user.js';
+import proxyKeysRoutes from './routes/proxykeys.js';
+import personasRoutes from './routes/personas.js';
+import logsRoutes from './routes/logs.js';
 import adminRoutes from './routes/admin.js';
+import v1Routes from './routes/v1.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const FileStore = sessionFileStore(session);
 
-// Trust proxy if we are behind one (e.g. Railway, Nginx)
+// Trust X-Forwarded-* headers from Railway / proxies
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
-// Security MW
-app.use(helmet({ contentSecurityPolicy: false })); // Disabled CSP for inline scripts in generated HTML
-app.use(cors());
-app.use(hpp());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Rate Limiting
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.GLOBAL_RATE_LIMIT_MAX || '200'),
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// ─── Middleware stack (order matters) ──────────────
+app.use(compression());
+app.use(requestMeta);
+app.use(securityHeaders);
 app.use(globalLimiter);
+app.use(cookieParser());
 
-// Session
-app.use(session({
-  store: new FileStore({ path: path.join(__dirname, '../data/sessions'), retries: 0 }),
-  secret: process.env.SESSION_SECRET || 'fallback_secret_must_change_in_prod',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 * 7 // 1 week
-  }
-}));
+// /v1 needs raw permissive CORS BEFORE the strict dashboard policy.
+// We mount v1Cors at the route level inside v1.js, but we also need OPTIONS
+// preflight to be handled before any auth middleware. Express handles this
+// because v1.js registers v1Cors first.
 
-// Static files
-app.use(express.static(path.join(__dirname, '../public')));
+// Apply strict dashboard CORS to everything else.
+// /v1 routes apply v1Cors themselves and override this when they match first.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/v1/') || req.path === '/v1') return next();
+  return corsPolicy(req, res, next);
+});
 
-// API Routes
-app.use('/', authRoutes); // mounts login/register logic and HTML sending
-app.use('/api/v1', proxyRoutes); // Note: The route in proxy.js specifically starts with /v1, so we mount at /api
-app.use('/api/user', userRoutes);
+// JSON body parsing — only for /api routes. /v1 forwards bodies as-is, but we
+// still need to parse them to inspect messages, so apply globally with a reasonable cap.
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+app.use(paramProtection);
+
+// Request logging
+app.use((req, res, next) => {
+  res.on('finish', () => logRequest(req, res));
+  next();
+});
+
+// ─── Routes ────────────────────────────────────────
+app.use('/api/auth', authRoutes);
+app.use('/api/proxy-keys', proxyKeysRoutes);
+app.use('/api/personas', personasRoutes);
+app.use('/api/logs', logsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/v1', v1Routes);
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', time: Date.now() }));
-
-// Fallback logic for frontend
-app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, '../public/dashboard.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
-
-app.use((req, res) => res.status(404).sendFile(path.join(__dirname, '../public/404.html')));
-
-app.use((err, req, res, next) => {
-  logger.error('Unhandled Server Error', { error: err.message, stack: err.stack });
-  res.status(500).json({ error: 'Internal server error' });
+// Health check
+app.get('/api/health', async (_req, res) => {
+  const newApiOk = await checkNewApiHealth();
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    upstream: { newApi: newApiOk ? 'ok' : 'unreachable' },
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  logger.info(`VixProxy started on port ${PORT}`);
+// ─── Static frontend ───────────────────────────────
+const publicDir = path.join(__dirname, '..', 'public');
+app.use(
+  express.static(publicDir, {
+    maxAge: config.isDev ? 0 : '1d',
+    etag: true,
+  }),
+);
+
+// SPA fallback — non-API routes return index.html
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/v1/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  res.sendFile(path.join(publicDir, 'index.html'));
 });
+
+// Global error handler — must be last
+app.use(globalErrorHandler);
+
+// ─── Background tasks ──────────────────────────────
+
+/**
+ * Schedule pruning of stale daily counter rows at midnight UTC.
+ * The vk_increment_counter SQL function creates per-day rows, so old rows
+ * accumulate. This keeps the table small.
+ */
+function scheduleMidnightPrune() {
+  const now = new Date();
+  const nextMidnight = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0),
+  );
+  const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+
+  logger.info(`Daily counter prune scheduled in ${Math.round(msUntilMidnight / 60000)} min (midnight UTC)`);
+
+  setTimeout(async () => {
+    await pruneStaleCounters();
+    setInterval(pruneStaleCounters, 24 * 60 * 60 * 1000);
+  }, msUntilMidnight);
+}
+
+async function pruneStaleCounters() {
+  try {
+    const { data, error } = await supabase.rpc('vk_reset_stale_counters');
+    if (error) logger.warn(`Counter prune failed: ${error.message}`);
+    else logger.info(`Midnight UTC: pruned ${data || 0} stale counter row(s)`);
+  } catch (err) {
+    logger.warn(`Counter prune error: ${err.message}`);
+  }
+}
+
+// ─── Boot ──────────────────────────────────────────
+async function start() {
+  const schemaOk = await ensureSchema();
+  if (!schemaOk) {
+    logger.error('Schema check failed. Apply supabase/migration.sql before starting.');
+    process.exit(1);
+  }
+
+  scheduleMidnightPrune();
+
+  app.listen(config.port, () => {
+    logger.info(`VixKnight v2 listening on :${config.port} [${config.env}]`);
+    logger.info(`Dashboard:    ${config.baseUrl}`);
+    logger.info(`Proxy URL:    ${config.baseUrl}/v1`);
+    logger.info(`Upstream:     ${config.newApi.url}`);
+  });
+}
+
+start().catch((err) => {
+  logger.error(`Boot failed: ${err.message}`);
+  process.exit(1);
+});
+
+export default app;

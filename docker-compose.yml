@@ -1,0 +1,32 @@
+services:
+  vixknight:
+    build: .
+    container_name: vixknight
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      - NEW_API_URL=http://new-api:3000
+    depends_on:
+      - new-api
+    restart: unless-stopped
+
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: vixknight-new-api
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./new-api-data:/data
+    environment:
+      - SQL_DSN=sqlite:///data/new-api.db
+      - REDIS_CONN_STRING=redis://redis:6379
+      - TZ=UTC
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: vixknight-redis
+    restart: unless-stopped
