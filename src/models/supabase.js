@@ -2,24 +2,32 @@ import { createClient } from '@supabase/supabase-js';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
 
-if (!config.supabase.url || !config.supabase.serviceKey) {
-  console.error('FATAL: SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
-  process.exit(1);
+const hasSupabaseCreds = Boolean(config.supabase.url && config.supabase.serviceKey);
+if (!hasSupabaseCreds) {
+  logger.error('SUPABASE_URL and SUPABASE_SERVICE_KEY are not set. The app will start but database calls will fail.');
 }
 
-// Service-role client — bypasses RLS, used for all server-side operations
-export const supabase = createClient(config.supabase.url, config.supabase.serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+// Service-role client — bypasses RLS, used for all server-side operations.
+// Use placeholder values when creds are missing so imports don't throw;
+// ensureSchema() will report the problem through /api/health instead.
+export const supabase = createClient(
+  config.supabase.url || 'http://localhost',
+  config.supabase.serviceKey || 'missing',
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
 
 // Anon client — for operations that should respect RLS (if you enable it later)
-export const supabaseAnon = createClient(config.supabase.url, config.supabase.anonKey);
+export const supabaseAnon = createClient(
+  config.supabase.url || 'http://localhost',
+  config.supabase.anonKey || 'missing',
+);
 
 /**
  * Verify the schema exists. Idempotent — safe to run on every boot.
  * Migration is applied via supabase/migration.sql in the dashboard SQL editor.
  */
 export async function ensureSchema() {
+  if (!hasSupabaseCreds) return false;
   logger.info('Checking Supabase schema...');
 
   const { error } = await supabase.from('vk_users').select('id').limit(1);

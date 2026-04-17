@@ -70,14 +70,16 @@ app.use('/api/logs', logsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/v1', v1Routes);
 
-// Health check
-app.get('/api/health', async (_req, res) => {
-  const newApiOk = await checkNewApiHealth();
+// Health check — must stay cheap so Railway's healthcheck doesn't time out.
+// Upstream status is reported from a cached value refreshed in the background.
+let bootState = { schema: 'pending', newApi: 'pending' };
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     version: '2.0.0',
-    upstream: { newApi: newApiOk ? 'ok' : 'unreachable' },
+    schema: bootState.schema,
+    upstream: { newApi: bootState.newApi },
   });
 });
 
@@ -134,26 +136,42 @@ async function pruneStaleCounters() {
 }
 
 // ─── Boot ──────────────────────────────────────────
-async function start() {
-  const schemaOk = await ensureSchema();
-  if (!schemaOk) {
-    logger.error('Schema check failed. Apply supabase/migration.sql before starting.');
-    process.exit(1);
-  }
-
-  scheduleMidnightPrune();
-
+// Bind the port first so Railway's healthcheck succeeds, then run schema
+// verification and upstream probing in the background. This prevents a
+// transient Supabase or upstream issue from taking the whole service down.
+function start() {
   app.listen(config.port, () => {
     logger.info(`VixKnight v2 listening on :${config.port} [${config.env}]`);
     logger.info(`Dashboard:    ${config.baseUrl}`);
     logger.info(`Proxy URL:    ${config.baseUrl}/v1`);
     logger.info(`Upstream:     ${config.newApi.url}`);
   });
+
+  scheduleMidnightPrune();
+
+  ensureSchema()
+    .then((ok) => {
+      bootState.schema = ok ? 'ok' : 'missing';
+      if (!ok) {
+        logger.error('Schema check failed. Apply supabase/migration.sql in your Supabase dashboard.');
+      }
+    })
+    .catch((err) => {
+      bootState.schema = 'error';
+      logger.error(`Schema check error: ${err.message}`);
+    });
+
+  const refreshUpstream = async () => {
+    try {
+      bootState.newApi = (await checkNewApiHealth()) ? 'ok' : 'unreachable';
+    } catch {
+      bootState.newApi = 'unreachable';
+    }
+  };
+  refreshUpstream();
+  setInterval(refreshUpstream, 30000);
 }
 
-start().catch((err) => {
-  logger.error(`Boot failed: ${err.message}`);
-  process.exit(1);
-});
+start();
 
 export default app;
